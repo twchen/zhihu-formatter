@@ -10,6 +10,7 @@
 // @grant        GM.xmlHttpRequest
 // @grant        GM_xmlhttpRequest
 // @connect      lens.zhihu.com
+// @supportURL   https://twchen.github.io/zhihu-formatter
 // ==/UserScript==
 
 (function() {
