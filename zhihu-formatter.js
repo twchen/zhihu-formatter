@@ -17,7 +17,7 @@
   "use strict";
 
   const body = document.querySelector("body");
-  const httpRequest = GM.xmlHttpRequest || GM_xmlhttpRequest;
+  const httpRequest = typeof GM_xmlhttpRequest === "undefined" ? GM.xmlHttpRequest : GM_xmlhttpRequest;
 
   function addLinkToNav() {
     const nav = document.querySelector("nav.AppHeader-nav");
