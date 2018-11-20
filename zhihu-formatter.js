@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知乎重排for印象笔记
 // @namespace    http://tampermonkey.net/
-// @version      0.5
+// @version      0.6
 // @description  增加一个“重排”链接于导航栏，点击后重排页面，只保留有用内容，然后可用“印象笔记·剪藏”收藏。使用前请先看下面注意事项和使用步骤
 // @author       twchen
 // @include      https://www.zhihu.com/question/*/answer/*
