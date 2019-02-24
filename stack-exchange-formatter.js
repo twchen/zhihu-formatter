@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Stack Exchange Formatter
 // @namespace    https://greasyfork.org/en/users/211578
-// @version      0.2
+// @version      0.3
 // @description  Format contents on Stack Enchange websites such as stackoverflow.com and askubuntu.com for easy saving to Evernote.
 // @author       twchen
 // @include      https://stackoverflow.com/questions/*
@@ -112,15 +112,15 @@
     removeAllChildren(body);
     const div = document.createElement("div");
     div.style.margin = 'auto';
-    if (saveDesc) {
-      div.appendChild(description);
-    }
-    answersToSave.forEach(ans => {
-      const hr = document.createElement("hr");
-      hr.style.height = '3px';
-      hr.style.marginTop = '4rem';
-      div.appendChild(hr);
-      div.appendChild(ans);
+    const posts = saveDesc ? [description, ...answersToSave] : answersToSave;
+    posts.forEach((post, i) => {
+      if(i > 0 || (!saveDesc && answersToSave.length > 1)){
+        const hr = document.createElement("hr");
+        hr.style.height = '3px';
+        hr.style.marginTop = '4rem';
+        div.appendChild(hr);
+      }
+      div.appendChild(post);
     });
     body.appendChild(div);
   }
