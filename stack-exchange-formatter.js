@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Stack Exchange Formatter
 // @namespace    https://greasyfork.org/en/users/211578
-// @version      0.1
+// @version      0.2
 // @description  Format contents on Stack Enchange websites such as stackoverflow.com and askubuntu.com for easy saving to Evernote.
 // @author       twchen
 // @include      https://stackoverflow.com/questions/*
@@ -35,7 +35,7 @@
       };
       const saveQALink = document.createElement('a');
       saveQALink.href = '#';
-      saveQALink.text = 'save Q&A';
+      saveQALink.text = 'save this Q&A';
       saveQALink.onclick = event => {
         event.preventDefault();
         answersToSave.push(text);
