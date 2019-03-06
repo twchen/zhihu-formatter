@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知乎重排for印象笔记
 // @namespace    http://tampermonkey.net/
-// @version      0.6
+// @version      0.7
 // @description  重新排版知乎的问答或者专栏，使“印象笔记·剪藏”只保存需要的内容。
 // @author       twchen
 // @include      https://www.zhihu.com/question/*/answer/*
@@ -13,7 +13,12 @@
 // @supportURL   https://twchen.github.io/zhihu-formatter
 // ==/UserScript==
 
-(function() {
+// Changelog
+// v0.7
+//   1. Search images links in "noscript" tag.
+//   2. Click on an image to change its resolution.
+
+(function () {
   "use strict";
 
   const body = document.querySelector("body");
@@ -191,22 +196,48 @@
     return el ? el.getAttribute(attr) : null;
   }
 
+  function getAttrValFromNoscript(div, attr) {
+    const nos = div.querySelector('noscript');
+    let value = null;
+    if (nos) {
+      const content = nos.textContent || nos.innerText || nos.innerHTML;
+      if (content) {
+        const pattern = `${attr}="(.*?)"`;
+        const re = new RegExp(pattern);
+        const groups = content.match(re);
+        if (groups) {
+          value = groups[1];
+        }
+      }
+    }
+    return value;
+  }
+
+  function getAttrVal(div, attr) {
+    return getAttributeValueOfAnyDOM(div, attr) || getAttrValFromNoscript(div, attr);
+  }
+
   // enable all gifs and load images
   function loadAllFigures() {
     const figures = document.querySelectorAll("figure");
+    const imgSrcAttrs = ['data-original', 'data-src', 'src', 'data-actualsrc'];
     figures.forEach(figure => {
       const gifDiv = figure.querySelector("div.RichText-gifPlaceholder");
       if (gifDiv !== null) {
         enableGIF(gifDiv);
       } else {
-        const original = getAttributeValueOfAnyDOM(figure, "data-original");
-        const dataSrc = getAttributeValueOfAnyDOM(figure, "data-src");
-        const acturalSrc = getAttributeValueOfAnyDOM(figure, "data-actualsrc");
-        const src = getAttributeValueOfAnyDOM(figure, "src");
-        const imgSrc = original || dataSrc || acturalSrc || src;
-        if (imgSrc) {
+        const imgSrcs = imgSrcAttrs.map(attr => getAttrVal(figure, attr)).filter(src => src != null);
+        if (imgSrcs.length > 0) {
           const img = document.createElement("img");
-          img.src = imgSrc;
+          img.src = imgSrcs[0];
+          img.onclick = (() => {
+            let i = 0;
+            return () => {
+              ++i;
+              img.src = imgSrcs[i % imgSrcs.length];
+            };
+          })();
+          img.title = 'Click to change resolution';
           removeAllChildren(figure);
           figure.appendChild(img);
         }

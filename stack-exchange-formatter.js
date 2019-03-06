@@ -114,7 +114,7 @@
     div.style.margin = 'auto';
     const posts = saveDesc ? [description, ...answersToSave] : answersToSave;
     posts.forEach((post, i) => {
-      if(i > 0 || (!saveDesc && answersToSave.length > 1)){
+      if (i > 0 || (!saveDesc && answersToSave.length > 1)) {
         const hr = document.createElement("hr");
         hr.style.height = '3px';
         hr.style.marginTop = '4rem';
