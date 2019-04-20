@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知乎重排for印象笔记
 // @namespace    http://tampermonkey.net/
-// @version      0.7
+// @version      0.8
 // @description  重新排版知乎的问答或者专栏，使“印象笔记·剪藏”只保存需要的内容。
 // @author       twchen
 // @include      https://www.zhihu.com/question/*/answer/*
@@ -13,16 +13,22 @@
 // @supportURL   https://twchen.github.io/zhihu-formatter
 // ==/UserScript==
 
-// Changelog
+// 更新日志
 // v0.7
-//   1. Search images links in "noscript" tag.
-//   2. Click on an image to change its resolution.
+//   1. 在<noscript>里搜索图片链接
+//   2. 点击图片改变分辨率
+// v0.8
+//   1. 改变图片的鼠标指针样式，使之更明显
+//   2. 把图片提示改为中文
 
-(function () {
+(function() {
   "use strict";
 
   const body = document.querySelector("body");
-  const httpRequest = typeof GM_xmlhttpRequest === "undefined" ? GM.xmlHttpRequest : GM_xmlhttpRequest;
+  const httpRequest =
+    typeof GM_xmlhttpRequest === "undefined"
+      ? GM.xmlHttpRequest
+      : GM_xmlhttpRequest;
 
   function addLinkToNav() {
     const nav = document.querySelector("nav.AppHeader-nav");
@@ -191,13 +197,13 @@
     }
   }
 
-  function getAttributeValueOfAnyDOM(root, attr) {
+  function getAttrValOfAnyDOM(root, attr) {
     const el = root.querySelector(`*[${attr}]`);
     return el ? el.getAttribute(attr) : null;
   }
 
   function getAttrValFromNoscript(div, attr) {
-    const nos = div.querySelector('noscript');
+    const nos = div.querySelector("noscript");
     let value = null;
     if (nos) {
       const content = nos.textContent || nos.innerText || nos.innerHTML;
@@ -214,19 +220,28 @@
   }
 
   function getAttrVal(div, attr) {
-    return getAttributeValueOfAnyDOM(div, attr) || getAttrValFromNoscript(div, attr);
+    return getAttrValOfAnyDOM(div, attr) || getAttrValFromNoscript(div, attr);
   }
 
   // enable all gifs and load images
   function loadAllFigures() {
     const figures = document.querySelectorAll("figure");
-    const imgSrcAttrs = ['data-original', 'data-src', 'src', 'data-actualsrc'];
+    const imgSrcAttrs = ["data-original", "data-src", "src", "data-actualsrc"];
     figures.forEach(figure => {
       const gifDiv = figure.querySelector("div.RichText-gifPlaceholder");
       if (gifDiv !== null) {
         enableGIF(gifDiv);
       } else {
-        const imgSrcs = imgSrcAttrs.map(attr => getAttrVal(figure, attr)).filter(src => src != null);
+        let imgSrcs = imgSrcAttrs
+          .map(attr => getAttrVal(figure, attr))
+          .filter(src => src != null);
+        const filename2Src = {};
+        imgSrcs.forEach(src => {
+          const groups = src.split("/");
+          const filename = groups[groups.length - 1];
+          filename2Src[filename] = src;
+        });
+        imgSrcs = Object.values(filename2Src);
         if (imgSrcs.length > 0) {
           const img = document.createElement("img");
           img.src = imgSrcs[0];
@@ -237,7 +252,10 @@
               img.src = imgSrcs[i % imgSrcs.length];
             };
           })();
-          img.title = 'Click to change resolution';
+          if (imgSrcs.length > 1) {
+            img.title = `点击改变分辨率`;
+            img.style.cursor = "pointer";
+          }
           removeAllChildren(figure);
           figure.appendChild(img);
         }
