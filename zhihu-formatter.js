@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知乎重排for印象笔记
 // @namespace    http://tampermonkey.net/
-// @version      0.8
+// @version      0.9
 // @description  重新排版知乎的问答或者专栏，使“印象笔记·剪藏”只保存需要的内容。
 // @author       twchen
 // @include      https://www.zhihu.com/question/*/answer/*

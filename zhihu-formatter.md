@@ -2,14 +2,14 @@
 
 1. 打开单个答案的页面。链接为"https://www.zhihu.com/question/12345678/answer/87654321"形式，
    可由答案下面的"分享" => "复制链接" 获得。  
-   ![](https://github.com/twchen/zhihu-formatter/blob/master/imgs/get-link.jpg)
+   ![](https://raw.githubusercontent.com/twchen/zhihu-formatter/master/imgs/get-link.jpg)
 2. 点击搜索框左边的“重排”链接。  
-   ![](https://github.com/twchen/zhihu-formatter/blob/master/imgs/qa.jpg)
+   ![](https://raw.githubusercontent.com/twchen/zhihu-formatter/master/imgs/qa.jpg)
 
 ### 重排专栏文章
 
 点击顶端“关注专栏”按钮左边的“重新排版”按钮。  
-![](https://github.com/twchen/zhihu-formatter/blob/master/imgs/zhuanlan.jpg)
+![](https://raw.githubusercontent.com/twchen/zhihu-formatter/master/imgs/zhuanlan.jpg)
 
 ### 功能
 
