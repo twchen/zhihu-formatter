@@ -13,13 +13,19 @@
 // @supportURL   https://twchen.github.io/zhihu-formatter
 // ==/UserScript==
 
-// 更新日志
-// v0.7
-//   1. 在<noscript>里搜索图片链接
-//   2. 点击图片改变分辨率
-// v0.8
-//   1. 改变图片的鼠标指针样式，使之更明显
-//   2. 把图片提示改为中文
+/**
+ * 更新日志
+ * v0.7
+ * 1. 在<noscript>里搜索图片链接
+ * 2. 点击图片改变分辨率
+ *
+ * v0.8
+ * 1. 改变图片的鼠标指针样式，使之更明显
+ * 2. 把图片提示改为中文
+ *
+ * v0.9
+ * 1. 保留专栏封面照片。点击可删除。
+ */
 
 (function() {
   "use strict";
@@ -99,6 +105,17 @@
     const topics = document.querySelector("div.Post-topicsAndReviewer");
 
     const div = document.createElement("div");
+    const titleImage = document.querySelector("img.TitleImage");
+    if (titleImage) {
+      titleImage.className = "";
+      titleImage.style.width = "100%";
+      titleImage.style.cursor = "pointer";
+      titleImage.title = "点击删除图片";
+      titleImage.onclick = () => {
+        div.removeChild(titleImage);
+      };
+      div.appendChild(titleImage);
+    }
     div.append(header, post, time, topics);
     div.style.margin = "1rem";
 
@@ -253,7 +270,7 @@
             };
           })();
           if (imgSrcs.length > 1) {
-            img.title = `点击改变分辨率`;
+            img.title = "点击图片换不同分辨率（如有）";
             img.style.cursor = "pointer";
           }
           removeAllChildren(figure);
