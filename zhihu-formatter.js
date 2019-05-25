@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知乎重排for印象笔记
 // @namespace    http://tampermonkey.net/
-// @version      0.9
+// @version      0.10
 // @description  重新排版知乎的问答或者专栏，使“印象笔记·剪藏”只保存需要的内容。
 // @author       twchen
 // @include      https://www.zhihu.com/question/*/answer/*
@@ -9,6 +9,7 @@
 // @run-at       document-idle
 // @grant        GM.xmlHttpRequest
 // @grant        GM_xmlhttpRequest
+// @grant        GM_registerMenuCommand
 // @connect      lens.zhihu.com
 // @supportURL   https://twchen.github.io/zhihu-formatter
 // ==/UserScript==
@@ -25,12 +26,18 @@
  *
  * v0.9
  * 1. 保留专栏封面照片。点击可删除。
+ *
+ * v0.10
+ * 1. 适应新专栏封面
+ * 2. 缩小专栏标题字体
+ * 3. 新功能：重排后可返回原页面
  */
 
 (function() {
   "use strict";
 
-  const body = document.querySelector("body");
+  const root = document.querySelector("#root");
+
   const httpRequest =
     typeof GM_xmlhttpRequest === "undefined"
       ? GM.xmlHttpRequest
@@ -63,19 +70,30 @@
   }
 
   function formatAnswer() {
+    root.style.display = "none";
+    let div = document.querySelector("#formatted");
+    if (div !== null) {
+      div.style.display = "block";
+      window.history.pushState("formatted answer", "");
+      return;
+    }
+
     const showMoreBtn = document.querySelector(
       "button.Button.QuestionRichText-more"
     );
     if (showMoreBtn !== null) showMoreBtn.click();
-    const title = document.querySelector("h1.QuestionHeader-title");
-    const detail = document.querySelector("div.QuestionHeader-detail");
-    const answer = document.querySelector("div.Card.AnswerCard");
+    const title = document
+      .querySelector("h1.QuestionHeader-title")
+      .cloneNode(true);
+    const detail = document
+      .querySelector("div.QuestionHeader-detail")
+      .cloneNode(true);
 
-    const div = document.createElement("div");
-    div.appendChild(title);
-    div.appendChild(detail);
+    const question = document.createElement("div");
+    question.appendChild(title);
+    question.appendChild(detail);
 
-    Object.assign(div.style, {
+    Object.assign(question.style, {
       backgroundColor: "white",
       margin: "0.8rem 0",
       padding: "0.2rem 1rem 1rem",
@@ -83,32 +101,55 @@
       boxShadow: "0 1px 3px rgba(26,26,26,.1)"
     });
 
-    removeAllChildren(body);
+    const answer = document
+      .querySelector("div.Card.AnswerCard")
+      .cloneNode(true);
+    // remove non-working actions
+    const actions = answer.querySelector(".ContentItem-actions");
+    actions.parentNode.removeChild(actions);
 
-    body.appendChild(div);
-    body.appendChild(answer);
+    div = document.createElement("div");
+    div.id = "formatted";
+    div.appendChild(question);
+    div.appendChild(answer);
 
-    postprocess();
+    // insert after root
+    root.after(div);
+
+    window.history.pushState("formatted answer", "");
+
+    postprocess(div);
   }
 
   function formatZhuanlan() {
-    const header = document.querySelector("header.Post-Header");
+    root.style.display = "none";
+    let div = document.querySelector("#formatted");
+    if (div !== null) {
+      div.style.display = "block";
+      window.history.pushState("formatted zhuanlan", "");
+      return;
+    }
+
+    const header = document.querySelector("header.Post-Header").cloneNode(true);
     const title = header.querySelector(".Post-Title");
     Object.assign(title.style, {
-      fontSize: "2rem",
+      fontSize: "1.5rem",
       fontWeight: "bold",
       marginBottom: "1rem"
     });
 
-    const post = document.querySelector("div.Post-RichText");
-    const time = document.querySelector("div.ContentItem-time");
-    const topics = document.querySelector("div.Post-topicsAndReviewer");
+    const post = document.querySelector("div.Post-RichText").cloneNode(true);
+    const time = document.querySelector("div.ContentItem-time").cloneNode(true);
+    const topics = document
+      .querySelector("div.Post-topicsAndReviewer")
+      .cloneNode(true);
 
-    const div = document.createElement("div");
-    const titleImage = document.querySelector("img.TitleImage");
+    div = document.createElement("div");
+    div.id = "formatted";
+    let titleImage = document.querySelector(".TitleImage");
     if (titleImage) {
-      titleImage.className = "";
-      titleImage.style.width = "100%";
+      titleImage = titleImage.cloneNode(true);
+      titleImage.style.maxWidth = "100%";
       titleImage.style.cursor = "pointer";
       titleImage.title = "点击删除图片";
       titleImage.onclick = () => {
@@ -119,14 +160,15 @@
     div.append(header, post, time, topics);
     div.style.margin = "1rem";
 
-    removeAllChildren(body);
-    body.appendChild(div);
+    root.after(div);
 
-    postprocess();
+    window.history.pushState("formatted zhuanlan", "");
+
+    postprocess(div);
   }
 
-  function replaceVideosByLinks() {
-    const videoDivs = document.querySelectorAll("div.RichText-video");
+  function replaceVideosByLinks(el) {
+    const videoDivs = el.querySelectorAll("div.RichText-video");
     videoDivs.forEach(async div => {
       let href, title, thumbnail;
       try {
@@ -161,6 +203,7 @@
         if (thumbnail) {
           const img = document.createElement("img");
           img.src = thumbnail;
+          img.style.maxWidth = "100%";
           a.appendChild(img);
         }
       }
@@ -208,6 +251,7 @@
       const img = document.createElement("img");
       const i = src.lastIndexOf(".");
       img.src = src.slice(0, i) + ".gif";
+      img.style.maxWidth = "100%";
       div.replaceWith(img);
     } catch (error) {
       console.error(`Error enabling gif: ${error.message}`);
@@ -241,8 +285,8 @@
   }
 
   // enable all gifs and load images
-  function loadAllFigures() {
-    const figures = document.querySelectorAll("figure");
+  function loadAllFigures(el) {
+    const figures = el.querySelectorAll("figure");
     const imgSrcAttrs = ["data-original", "data-src", "src", "data-actualsrc"];
     figures.forEach(figure => {
       const gifDiv = figure.querySelector("div.RichText-gifPlaceholder");
@@ -262,6 +306,7 @@
         if (imgSrcs.length > 0) {
           const img = document.createElement("img");
           img.src = imgSrcs[0];
+          img.style.maxWidth = "100%";
           img.onclick = (() => {
             let i = 0;
             return () => {
@@ -280,9 +325,9 @@
     });
   }
 
-  function postprocess() {
-    replaceVideosByLinks();
-    loadAllFigures();
+  function postprocess(el) {
+    replaceVideosByLinks(el);
+    loadAllFigures(el);
   }
 
   function removeAllChildren(el) {
@@ -301,4 +346,29 @@
   }
 
   injectToNav();
+
+  window.addEventListener("popstate", function(event) {
+    const div = document.querySelector("#formatted");
+    if (event.state === null) {
+      root.style.display = "block";
+      div.style.display = "none";
+    } else {
+      root.style.display = "none";
+      div.style.display = "block";
+    }
+  });
+
+  GM_registerMenuCommand("Click me!", function() {
+    const div = document.createElement("div");
+    Object.assign(div.style, {
+      position: "fixed",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+      backgroundColor: "red",
+      width: "20rem",
+      height: "20rem"
+    });
+    window.document.body.append(div);
+  });
 })();
