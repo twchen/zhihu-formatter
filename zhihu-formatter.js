@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知乎重排for印象笔记
 // @namespace    http://tampermonkey.net/
-// @version      0.10
+// @version      0.11
 // @description  重新排版知乎的问答或者专栏，使“印象笔记·剪藏”只保存需要的内容。
 // @author       twchen
 // @include      https://www.zhihu.com/question/*/answer/*
@@ -10,6 +10,8 @@
 // @grant        GM.xmlHttpRequest
 // @grant        GM_xmlhttpRequest
 // @grant        GM_registerMenuCommand
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @connect      lens.zhihu.com
 // @supportURL   https://twchen.github.io/zhihu-formatter
 // ==/UserScript==
@@ -31,6 +33,14 @@
  * 1. 适应新专栏封面
  * 2. 缩小专栏标题字体
  * 3. 新功能：重排后可返回原页面
+ *
+ * v0.10.2
+ * 1. 适应新导航栏
+ *
+ * v0.11
+ * 1. 图片居中
+ * 2. 保留figcaption
+ * 3. 增加默认图片质量配置
  */
 
 (function() {
@@ -44,16 +54,16 @@
       : GM_xmlhttpRequest;
 
   function addLinkToNav() {
-    const nav = document.querySelector("nav.AppHeader-nav");
-    const a = document.createElement("a");
+    const nav = document.querySelector(".AppHeader-Tabs");
+    const li = nav.querySelector("li").cloneNode(true);
+    const a = li.querySelector("a");
     a.href = "#";
     a.text = "重排";
-    a.classList.add("AppHeader-navItem");
     a.onclick = event => {
       event.preventDefault();
       formatAnswer();
     };
-    nav.appendChild(a);
+    nav.appendChild(li);
   }
 
   function addBtnToNav() {
@@ -74,7 +84,7 @@
     let div = document.querySelector("#formatted");
     if (div !== null) {
       div.style.display = "block";
-      window.history.pushState("formatted answer", "");
+      window.history.pushState("formatted", "");
       return;
     }
 
@@ -116,7 +126,7 @@
     // insert after root
     root.after(div);
 
-    window.history.pushState("formatted answer", "");
+    window.history.pushState("formatted", "");
 
     postprocess(div);
   }
@@ -126,7 +136,7 @@
     let div = document.querySelector("#formatted");
     if (div !== null) {
       div.style.display = "block";
-      window.history.pushState("formatted zhuanlan", "");
+      window.history.pushState("formatted", "");
       return;
     }
 
@@ -162,7 +172,7 @@
 
     root.after(div);
 
-    window.history.pushState("formatted zhuanlan", "");
+    window.history.pushState("formatted", "");
 
     postprocess(div);
   }
@@ -236,9 +246,7 @@
         },
         onerror: response => {
           reject({
-            message: `Status: ${response.status}. StatusText: ${
-              response.statusText
-            }`
+            message: `Status: ${response.status}. StatusText: ${response.statusText}`
           });
         }
       });
@@ -251,7 +259,6 @@
       const img = document.createElement("img");
       const i = src.lastIndexOf(".");
       img.src = src.slice(0, i) + ".gif";
-      img.style.maxWidth = "100%";
       div.replaceWith(img);
     } catch (error) {
       console.error(`Error enabling gif: ${error.message}`);
@@ -284,56 +291,76 @@
     return getAttrValOfAnyDOM(div, attr) || getAttrValFromNoscript(div, attr);
   }
 
+  function loadImage(figure) {
+    const imgSrcAttrs = ["data-original", "data-src", "src", "data-actualsrc"];
+    let imgSrcs = imgSrcAttrs
+      .map(attr => getAttrVal(figure, attr))
+      .filter(src => src != null && !src.toLowerCase().startsWith("data:"));
+    const filename2Src = {};
+    imgSrcs.forEach(src => {
+      const groups = src.split("/");
+      const filename = groups[groups.length - 1];
+      filename2Src[filename] = src;
+    });
+    imgSrcs = Object.values(filename2Src);
+    if (imgSrcs.length > 0) {
+      const img = document.createElement("img");
+      const suffix = GM_getValue("imageNameSuffix", "_hd.");
+      let i = 0;
+      while (i < imgSrcs.length && !imgSrcs[i].includes(suffix)) ++i;
+      if (i === imgSrcs.length) i = 0;
+      img.src = imgSrcs[i];
+
+      if (imgSrcs.length > 1) {
+        img.onclick = (() => {
+          let idx = i;
+          return () => {
+            ++idx;
+            img.src = imgSrcs[idx % imgSrcs.length];
+          };
+        })();
+
+        img.onmouseover = event => {
+          hint.style.display = "block";
+          hint.style.top = event.clientY + "px";
+          hint.style.left = event.clientX + "px";
+        };
+
+        img.onmouseleave = event => {
+          hint.style.display = "none";
+        };
+        img.style.cursor = "pointer";
+      }
+
+      const el =
+        figure.querySelector("img") || figure.querySelector("noscript");
+      if (el) el.replaceWith(img);
+      else figure.prepend(img);
+    }
+  }
+
   // enable all gifs and load images
   function loadAllFigures(el) {
     const figures = el.querySelectorAll("figure");
-    const imgSrcAttrs = ["data-original", "data-src", "src", "data-actualsrc"];
     figures.forEach(figure => {
       const gifDiv = figure.querySelector("div.RichText-gifPlaceholder");
-      if (gifDiv !== null) {
-        enableGIF(gifDiv);
-      } else {
-        let imgSrcs = imgSrcAttrs
-          .map(attr => getAttrVal(figure, attr))
-          .filter(src => src != null);
-        const filename2Src = {};
-        imgSrcs.forEach(src => {
-          const groups = src.split("/");
-          const filename = groups[groups.length - 1];
-          filename2Src[filename] = src;
+      if (gifDiv !== null) enableGIF(gifDiv);
+      else loadImage(figure);
+
+      const imgs = figure.querySelectorAll("img");
+      imgs.forEach(img => {
+        Object.assign(img.style, {
+          maxWidth: "100%",
+          display: "block",
+          margin: "auto"
         });
-        imgSrcs = Object.values(filename2Src);
-        if (imgSrcs.length > 0) {
-          const img = document.createElement("img");
-          img.src = imgSrcs[0];
-          img.style.maxWidth = "100%";
-          img.onclick = (() => {
-            let i = 0;
-            return () => {
-              ++i;
-              img.src = imgSrcs[i % imgSrcs.length];
-            };
-          })();
-          if (imgSrcs.length > 1) {
-            img.title = "点击图片换不同分辨率（如有）";
-            img.style.cursor = "pointer";
-          }
-          removeAllChildren(figure);
-          figure.appendChild(img);
-        }
-      }
+      });
     });
   }
 
   function postprocess(el) {
     replaceVideosByLinks(el);
     loadAllFigures(el);
-  }
-
-  function removeAllChildren(el) {
-    while (el.firstChild) {
-      el.removeChild(el.firstChild);
-    }
   }
 
   function injectToNav() {
@@ -347,28 +374,32 @@
 
   injectToNav();
 
+  const hint = document.createElement("div");
+  hint.innerText = "点击图片换不同分辨率（如有）";
+  Object.assign(hint.style, {
+    display: "none",
+    position: "fixed",
+    backgroundColor: "white",
+    border: "1px solid black"
+  });
+
+  document.body.append(hint);
+
   window.addEventListener("popstate", function(event) {
     const div = document.querySelector("#formatted");
-    if (event.state === null) {
-      root.style.display = "block";
-      div.style.display = "none";
-    } else {
+    if (event.state === "formatted") {
       root.style.display = "none";
       div.style.display = "block";
+    } else {
+      root.style.display = "block";
+      div.style.display = "none";
     }
   });
 
-  GM_registerMenuCommand("Click me!", function() {
-    const div = document.createElement("div");
-    Object.assign(div.style, {
-      position: "fixed",
-      top: "50%",
-      left: "50%",
-      transform: "translate(-50%, -50%)",
-      backgroundColor: "red",
-      width: "20rem",
-      height: "20rem"
-    });
-    window.document.body.append(div);
+  GM_registerMenuCommand("图片默认高清", function() {
+    GM_setValue("imageNameSuffix", "_hd.");
+  });
+  GM_registerMenuCommand("图片默认原图", function() {
+    GM_setValue("imageNameSuffix", "_r.");
   });
 })();
