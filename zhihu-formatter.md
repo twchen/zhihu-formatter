@@ -17,16 +17,16 @@
 
 1. 想法的链接形式为"https://www.zhihu.com/pin/12345678987654321"
 2. 点击搜索框左边的"重排"链接。  
-   ![](./imgs/pin.jpg)
+   ![](https://raw.githubusercontent.com/twchen/zhihu-formatter/master/imgs/pin.jpg)
 3. 可设置如何保留评论。默认仅保持当前页面的评论。
 
 
 ### 设置界面
 
 1. 先通过脚本管理器(如Tampermonkey)的菜单打开设置。  
-   ![](./imgs/open-settings.jpg)   
+   ![](https://raw.githubusercontent.com/twchen/zhihu-formatter/master/imgs/open-settings.jpg)   
 2. 设置界面会在页面正中显示。   
-   ![](./imgs/settings.jpg)   
+   ![](https://raw.githubusercontent.com/twchen/zhihu-formatter/master/imgs/settings.jpg)   
 3. 设置完成后点击右上角"X"关闭。不需刷新即可重排。
 
 
