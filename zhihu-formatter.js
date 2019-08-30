@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         知乎重排for印象笔记
 // @namespace    http://tampermonkey.net/
-// @version      0.11
+// @version      0.12
 // @description  重新排版知乎的问答或者专栏，使“印象笔记·剪藏”只保存需要的内容。
 // @author       twchen
 // @include      https://www.zhihu.com/question/*/answer/*
 // @include      https://zhuanlan.zhihu.com/p/*
+// @include      https://www.zhihu.com/pin/*
 // @run-at       document-idle
 // @grant        GM.xmlHttpRequest
 // @grant        GM_xmlhttpRequest
@@ -41,19 +42,125 @@
  * 1. 图片居中
  * 2. 保留figcaption
  * 3. 增加默认图片质量配置
+ *
+ * v0.12
+ * 1. 新增设置界面
+ * 2. 支持重排想法
+ *
  */
 
 (function() {
   "use strict";
 
+  class Settings {
+    constructor() {
+      this.settings = {};
+      this.div = null;
+      GM_registerMenuCommand("设置", this.show.bind(this));
+    }
+
+    getValue(key) {
+      return GM_getValue(key, this.settings[key].defaultOption);
+    }
+
+    setValue(key, value) {
+      GM_setValue(key, value);
+    }
+
+    add_setting(key, desc, options, defaultOption) {
+      this.settings[key] = {
+        desc,
+        options,
+        defaultOption
+      };
+    }
+
+    show() {
+      this.close();
+      this.div = document.createElement("div");
+      Object.assign(this.div.style, {
+        position: "fixed",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        backgroundColor: "white",
+        border: "1px solid black",
+        borderRadius: "5px",
+        padding: "0.8rem",
+        width: "24rem",
+        zIndex: 999
+      });
+
+      for (let key in this.settings) {
+        if (this.div.children.length > 0) {
+          this.div.appendChild(document.createElement("br"));
+        }
+        const { desc, options } = this.settings[key];
+        const descSpan = document.createElement("span");
+        descSpan.innerText = `${desc}: `;
+        this.div.appendChild(descSpan);
+        // the setting is binary
+        if (options.length === 2 && options.includes(true) && options.includes(false)) {
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          if (this.getValue(key)) {
+            checkbox.setAttribute("checked", "checked");
+          }
+          checkbox.onchange = event => {
+            this.setValue(key, event.target.checked);
+          };
+          this.div.appendChild(checkbox);
+        } else {
+          for (let option of options) {
+            const radio = document.createElement("input");
+            const id = `${key}-${option}`;
+            radio.id = id;
+            radio.type = "radio";
+            radio.setAttribute("name", key);
+            radio.setAttribute("value", option);
+            if (this.getValue(key) === option) {
+              radio.setAttribute("checked", "checked");
+            }
+            radio.onchange = () => {
+              this.setValue(key, option);
+            };
+            this.div.appendChild(radio);
+            const label = document.createElement("label");
+            label.setAttribute("for", id);
+            label.innerText = option;
+            this.div.appendChild(label);
+          }
+        }
+      }
+      if (this.div.children.length > 0) {
+        const closeBtn = document.createElement("span");
+        closeBtn.innerText = "X";
+        closeBtn.onclick = this.close.bind(this);
+        Object.assign(closeBtn.style, {
+          position: "absolute",
+          top: "0.5rem",
+          right: "0.5rem",
+          cursor: "pointer"
+        });
+        this.div.appendChild(closeBtn);
+        document.body.appendChild(this.div);
+      }
+    }
+
+    close() {
+      if (this.div !== null) {
+        this.div.remove();
+        this.div = null;
+      }
+    }
+  }
+
   const root = document.querySelector("#root");
 
   const httpRequest =
-    typeof GM_xmlhttpRequest === "undefined"
-      ? GM.xmlHttpRequest
-      : GM_xmlhttpRequest;
+    typeof GM_xmlhttpRequest === "undefined" ? GM.xmlHttpRequest : GM_xmlhttpRequest;
 
-  function addLinkToNav() {
+  function addLinkToNav(onclick) {
     const nav = document.querySelector(".AppHeader-Tabs");
     const li = nav.querySelector("li").cloneNode(true);
     const a = li.querySelector("a");
@@ -61,7 +168,7 @@
     a.text = "重排";
     a.onclick = event => {
       event.preventDefault();
-      formatAnswer();
+      onclick();
     };
     nav.appendChild(li);
   }
@@ -73,9 +180,7 @@
     btn.innerText = "重新排版";
     btn.classList.add("Button", "Button--blue");
     btn.style.marginRight = "1rem";
-    btn.onclick = () => {
-      formatZhuanlan();
-    };
+    btn.onclick = formatZhuanlan;
     pageHeader.prepend(btn);
   }
 
@@ -83,21 +188,13 @@
     root.style.display = "none";
     let div = document.querySelector("#formatted");
     if (div !== null) {
-      div.style.display = "block";
-      window.history.pushState("formatted", "");
-      return;
+      div.remove();
     }
 
-    const showMoreBtn = document.querySelector(
-      "button.Button.QuestionRichText-more"
-    );
+    const showMoreBtn = document.querySelector("button.Button.QuestionRichText-more");
     if (showMoreBtn !== null) showMoreBtn.click();
-    const title = document
-      .querySelector("h1.QuestionHeader-title")
-      .cloneNode(true);
-    const detail = document
-      .querySelector("div.QuestionHeader-detail")
-      .cloneNode(true);
+    const title = document.querySelector("h1.QuestionHeader-title").cloneNode(true);
+    const detail = document.querySelector("div.QuestionHeader-detail").cloneNode(true);
 
     const question = document.createElement("div");
     question.appendChild(title);
@@ -111,9 +208,7 @@
       boxShadow: "0 1px 3px rgba(26,26,26,.1)"
     });
 
-    const answer = document
-      .querySelector("div.Card.AnswerCard")
-      .cloneNode(true);
+    const answer = document.querySelector("div.Card.AnswerCard").cloneNode(true);
     // remove non-working actions
     const actions = answer.querySelector(".ContentItem-actions");
     actions.parentNode.removeChild(actions);
@@ -135,9 +230,7 @@
     root.style.display = "none";
     let div = document.querySelector("#formatted");
     if (div !== null) {
-      div.style.display = "block";
-      window.history.pushState("formatted", "");
-      return;
+      div.remove();
     }
 
     const header = document.querySelector("header.Post-Header").cloneNode(true);
@@ -150,9 +243,7 @@
 
     const post = document.querySelector("div.Post-RichText").cloneNode(true);
     const time = document.querySelector("div.ContentItem-time").cloneNode(true);
-    const topics = document
-      .querySelector("div.Post-topicsAndReviewer")
-      .cloneNode(true);
+    const topics = document.querySelector("div.Post-topicsAndReviewer").cloneNode(true);
 
     div = document.createElement("div");
     div.id = "formatted";
@@ -175,6 +266,124 @@
     window.history.pushState("formatted", "");
 
     postprocess(div);
+  }
+
+  function formatPin() {
+    let div = document.querySelector("#formatted");
+    if (div !== null) {
+      div.remove();
+    }
+
+    const pinItem = document.querySelector(".PinItem");
+    div = pinItem.cloneNode(true);
+    div.id = "formatted";
+    div.style.margin = "1rem";
+
+    const remainContents = div.querySelectorAll(".PinItem-remainContentRichText");
+    remainContents.forEach(remainContent => {
+      // assume only one .PinItem-remainContentRichText has a video or some images, otherwise the code may not run correctly.
+      if (remainContent.querySelector(".RichText-video")) {
+        // show video
+        replaceVideosByLinks(remainContent);
+      }
+      const preview = remainContent.querySelector(".Image-Wrapper-Preview");
+      if (preview) {
+        // show all images
+        replaceThumbnailsByRealImages(preview);
+      }
+    });
+
+    if (
+      settings.getValue("keepComments") === "否" ||
+      div.querySelector(".CommentListV2") === null ||
+      div.querySelector(".CommentListV2").children.length === 0
+    ) {
+      const comments = div.querySelector(".Comments-container");
+      comments.style.display = "none";
+    } else {
+      // hide the comment editor
+      const commentEditor = div.querySelector(".CommentEditorV2--normal");
+      commentEditor.style.display = "none";
+      // get all remaining comments
+      if (settings.getValue("keepComments") === "此页后全部") {
+        const commentsClone = div.querySelector(".CommentListV2");
+        (async () => {
+          while (true) {
+            const comments = await getNextPageComments(root);
+            if (comments === null) break;
+            for (let i = 0; i < comments.children.length; ++i) {
+              commentsClone.appendChild(comments.children[i].cloneNode(true));
+            }
+          }
+        })();
+      }
+    }
+
+    root.after(div);
+    root.style.display = "none";
+    window.history.pushState("formatted", "");
+  }
+
+  function replaceThumbnailsByRealImages(preview) {
+    const realImages = document.createElement("div");
+    const thumbnails = document.querySelectorAll("#root .Thumbnail-Wrapper");
+    thumbnails.forEach(thumbnail => {
+      const img = getRealImage(thumbnail);
+      if (img !== null) realImages.appendChild(img);
+    });
+
+    try {
+      const surplusSign = document.querySelector("#root .Thumbnail-Surplus-Sign");
+      if (surplusSign !== null) {
+        const numLeft = parseInt(surplusSign.innerText);
+        thumbnails[thumbnails.length - 1].click();
+
+        const imageGallery = document.querySelector(".ImageGallery-Inner");
+        const arrowRight = document.querySelector("a.ImageGallery-arrow-right");
+        for (let i = 0; i < numLeft; ++i) {
+          arrowRight.click();
+          const img = getRealImage(imageGallery);
+          if (img !== null) realImages.appendChild(img);
+        }
+
+        const close = document.querySelector("a.ImageGallery-close");
+        close.click();
+      }
+    } catch (error) {
+      console.error(`Error retrieving remaining images: ${error.message}`);
+    }
+
+    realImages.querySelectorAll("img").forEach(img => {
+      Object.assign(img.style, {
+        maxWidth: "100%",
+        display: "block",
+        margin: "1rem auto"
+      });
+    });
+
+    preview.replaceWith(realImages);
+  }
+
+  function getNextPageComments(root) {
+    return new Promise((resolve, reject) => {
+      const nextPage = root.querySelector(".PaginationButton-next");
+      if (nextPage === null) {
+        resolve(null);
+      } else {
+        nextPage.click();
+        const startTime = new Date().getTime();
+        const id = setInterval(() => {
+          if (new Date().getTime() - startTime > 3000) {
+            reject(new Error("Timeout"));
+            return;
+          }
+          const comments = root.querySelector(".CommentListV2");
+          if (comments === null) return;
+          clearInterval(id);
+          resolve(comments);
+        }, 100);
+      }
+    });
   }
 
   function replaceVideosByLinks(el) {
@@ -291,11 +500,13 @@
     return getAttrValOfAnyDOM(div, attr) || getAttrValFromNoscript(div, attr);
   }
 
-  function loadImage(figure) {
-    const imgSrcAttrs = ["data-original", "data-src", "src", "data-actualsrc"];
+  function getRealImage(el) {
+    const imgSrcAttrs = ["data-original", "data-actualsrc", "data-src", "src"];
     let imgSrcs = imgSrcAttrs
-      .map(attr => getAttrVal(figure, attr))
+      .map(attr => getAttrVal(el, attr))
       .filter(src => src != null && !src.toLowerCase().startsWith("data:"));
+
+    // find unique filenames
     const filename2Src = {};
     imgSrcs.forEach(src => {
       const groups = src.split("/");
@@ -303,39 +514,36 @@
       filename2Src[filename] = src;
     });
     imgSrcs = Object.values(filename2Src);
+
     if (imgSrcs.length > 0) {
       const img = document.createElement("img");
-      const suffix = GM_getValue("imageNameSuffix", "_hd.");
+      const suffix = quality2Suffix[settings.getValue("imageQuality")];
       let i = 0;
       while (i < imgSrcs.length && !imgSrcs[i].includes(suffix)) ++i;
       if (i === imgSrcs.length) i = 0;
       img.src = imgSrcs[i];
 
       if (imgSrcs.length > 1) {
-        img.onclick = (() => {
-          let idx = i;
-          return () => {
-            ++idx;
-            img.src = imgSrcs[idx % imgSrcs.length];
-          };
-        })();
+        img.onclick = () => {
+          if (++i === imgSrcs.length) i = 0;
+          img.src = imgSrcs[i];
+        };
 
         img.onmouseover = event => {
           hint.style.display = "block";
           hint.style.top = event.clientY + "px";
-          hint.style.left = event.clientX + "px";
+          hint.style.left = event.clientX + 3 + "px";
         };
 
-        img.onmouseleave = event => {
+        img.onmouseleave = () => {
           hint.style.display = "none";
         };
         img.style.cursor = "pointer";
       }
 
-      const el =
-        figure.querySelector("img") || figure.querySelector("noscript");
-      if (el) el.replaceWith(img);
-      else figure.prepend(img);
+      return img;
+    } else {
+      return null;
     }
   }
 
@@ -344,8 +552,19 @@
     const figures = el.querySelectorAll("figure");
     figures.forEach(figure => {
       const gifDiv = figure.querySelector("div.RichText-gifPlaceholder");
-      if (gifDiv !== null) enableGIF(gifDiv);
-      else loadImage(figure);
+      if (gifDiv !== null) {
+        enableGIF(gifDiv);
+      } else {
+        const img = getRealImage(figure);
+        if (img) {
+          const el = figure.querySelector("img") || figure.querySelector("noscript");
+          if (el) {
+            el.replaceWith(img);
+          } else {
+            figure.prepend(img);
+          }
+        }
+      }
 
       const imgs = figure.querySelectorAll("img");
       imgs.forEach(img => {
@@ -365,11 +584,9 @@
 
   function injectToNav() {
     const url = window.location.href;
-    if (url.includes("zhuanlan")) {
-      addBtnToNav();
-    } else {
-      addLinkToNav();
-    }
+    if (url.includes("zhuanlan")) addBtnToNav();
+    else if (url.includes("answer")) addLinkToNav(formatAnswer);
+    else addLinkToNav(formatPin);
   }
 
   injectToNav();
@@ -396,10 +613,16 @@
     }
   });
 
-  GM_registerMenuCommand("图片默认高清", function() {
-    GM_setValue("imageNameSuffix", "_hd.");
-  });
-  GM_registerMenuCommand("图片默认原图", function() {
-    GM_setValue("imageNameSuffix", "_r.");
-  });
+  const settings = new Settings();
+  settings.add_setting("imageQuality", "默认图片质量", ["原始", "高清"], "原始");
+  settings.add_setting(
+    "keepComments",
+    "重排想法时保留评论",
+    ["否", "仅此页", "此页后全部"],
+    "仅此页"
+  );
+  const quality2Suffix = {
+    原始: "_r.",
+    高清: "_hd."
+  };
 })();
