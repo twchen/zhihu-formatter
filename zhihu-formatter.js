@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知乎重排for印象笔记
 // @namespace    http://tampermonkey.net/
-// @version      0.12
+// @version      0.13
 // @description  重新排版知乎的问答或者专栏，使“印象笔记·剪藏”只保存需要的内容。
 // @author       twchen
 // @include      https://www.zhihu.com/question/*/answer/*
@@ -19,17 +19,6 @@
 
 /**
  * 更新日志
- * v0.7
- * 1. 在<noscript>里搜索图片链接
- * 2. 点击图片改变分辨率
- *
- * v0.8
- * 1. 改变图片的鼠标指针样式，使之更明显
- * 2. 把图片提示改为中文
- *
- * v0.9
- * 1. 保留专栏封面照片。点击可删除。
- *
  * v0.10
  * 1. 适应新专栏封面
  * 2. 缩小专栏标题字体
@@ -46,6 +35,10 @@
  * v0.12
  * 1. 新增设置界面
  * 2. 支持重排想法
+ *
+ * v0.13
+ * 1. 把重定向链接改为直链
+ * 2. 解决一些链接在印象笔记客户端无法点击的问题
  *
  */
 
@@ -322,6 +315,8 @@
     root.after(div);
     root.style.display = "none";
     window.history.pushState("formatted", "");
+
+    fixLinks(div);
   }
 
   function replaceThumbnailsByRealImages(preview) {
@@ -374,6 +369,7 @@
         const startTime = new Date().getTime();
         const id = setInterval(() => {
           if (new Date().getTime() - startTime > 3000) {
+            clearInterval(id);
             reject(new Error("Timeout"));
             return;
           }
@@ -577,9 +573,31 @@
     });
   }
 
+  function fixLinks(el) {
+    const re = /https?:\/\/link\.zhihu\.com\/\?target=(.*)/i;
+    const as = el.querySelectorAll("a");
+    as.forEach(a => {
+      // fix indirect links
+      const groups = re.exec(a.href);
+      if (groups) {
+        a.href = decodeURIComponent(groups[1]);
+      }
+
+      // fix links with hidden texts
+      const ellipsis = a.querySelector(":scope > span.ellipsis");
+      if (ellipsis) {
+        a.innerHTML =
+          a.innerText.length > LINK_TEXT_MAX_LEN
+            ? a.innerText.slice(0, LINK_TEXT_MAX_LEN) + "..."
+            : a.innerText;
+      }
+    });
+  }
+
   function postprocess(el) {
     replaceVideosByLinks(el);
     loadAllFigures(el);
+    fixLinks(el);
   }
 
   function injectToNav() {
@@ -599,6 +617,8 @@
     backgroundColor: "white",
     border: "1px solid black"
   });
+
+  const LINK_TEXT_MAX_LEN = 50;
 
   document.body.append(hint);
 
