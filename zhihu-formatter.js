@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知乎重排for印象笔记
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  重新排版知乎的问答，专栏或想法，使"印象笔记·剪藏"只保存需要的内容。
 // @author       twchen
 // @match        https://www.zhihu.com/question/*/answer/*
@@ -11,15 +11,13 @@
 // @inject-into  auto
 // @grant        GM.xmlHttpRequest
 // @grant        GM_xmlhttpRequest
-// @grant        GM_registerMenuCommand
 // @grant        GM.getValue
 // @grant        GM_getValue
 // @grant        GM.setValue
 // @grant        GM_setValue
 // @connect      lens.zhihu.com
 // @connect      api.zhihu.com
-// @connect      www.zhihu.com
-// @supportURL   https://twchen.github.io/zhihu-formatter
+// @supportURL   https://github.com/twchen/zhihu-formatter/issues
 // ==/UserScript==
 
 /**
@@ -48,6 +46,9 @@
  * 3. 保留视频原有样式
  * 4. 解决用Firefox保存专栏时公式无法显示的问题
  *
+ * v1.1
+ * 1. 把公式转为更高分辨率的图片
+ * 2. 重构代码
  */
 
 // GM 4 API polyfill
@@ -66,6 +67,20 @@ if (typeof GM == "undefined") {
   });
   GM.xmlHttpRequest = GM_xmlhttpRequest;
 }
+
+GM.asyncHttpRequest = args => {
+  return new Promise((resolve, reject) => {
+    GM.xmlHttpRequest({
+      ...args,
+      onload: resolve,
+      onerror: response => {
+        reject({
+          message: `Status:${response.status}. StatusText: ${response.statusText}`
+        });
+      }
+    });
+  });
+};
 
 (function() {
   "use strict";
@@ -105,11 +120,8 @@ if (typeof GM == "undefined") {
     if (showMoreBtn !== null) showMoreBtn.click();
     const title = document.querySelector("h1.QuestionHeader-title").cloneNode(true);
     const detail = document.querySelector("div.QuestionHeader-detail").cloneNode(true);
-
     const question = document.createElement("div");
-    question.appendChild(title);
-    question.appendChild(detail);
-
+    question.append(title, detail);
     Object.assign(question.style, {
       backgroundColor: "white",
       margin: "0.8rem 0",
@@ -117,22 +129,16 @@ if (typeof GM == "undefined") {
       borderRadius: "2px",
       boxShadow: "0 1px 3px rgba(26,26,26,.1)"
     });
-
     const answer = document.querySelector("div.Card.AnswerCard").cloneNode(true);
     // remove non-working actions
     const actions = answer.querySelector(".ContentItem-actions");
-    actions.parentNode.removeChild(actions);
+    actions.style.display = "none";
 
     div = document.createElement("div");
     div.id = "formatted";
-    div.appendChild(question);
-    div.appendChild(answer);
-
-    // insert after root
+    div.append(question, answer);
     root.after(div);
-
     window.history.pushState("formatted", "");
-
     postprocess(div);
   }
 
@@ -150,28 +156,21 @@ if (typeof GM == "undefined") {
       fontWeight: "bold",
       marginBottom: "1rem"
     });
-
     const post = document.querySelector("div.Post-RichText").cloneNode(true);
     const time = document.querySelector("div.ContentItem-time").cloneNode(true);
     const topics = document.querySelector("div.Post-topicsAndReviewer").cloneNode(true);
+    const titleImage = document.querySelector(".TitleImage");
 
     div = document.createElement("div");
     div.id = "formatted";
-
-    const titleImage = document.querySelector(".TitleImage");
     if (titleImage) {
       const img = (await getRealImage(titleImage)) || titleImage.cloneNode(true);
       div.appendChild(img);
     }
-
     div.append(header, post, time, topics);
     div.style.margin = "1rem";
-
     root.after(div);
-
     window.history.pushState("formatted", "");
-
-    loadEuqations(div);
     postprocess(div);
   }
 
@@ -215,13 +214,10 @@ if (typeof GM == "undefined") {
       // get all remaining comments
       if ((await settings.get("keepComments")) === "此页后全部") {
         const commentsClone = div.querySelector(".CommentListV2");
-
         while (true) {
           const comments = await getNextPageComments(root);
           if (comments === null) break;
-          for (let i = 0; i < comments.children.length; ++i) {
-            commentsClone.appendChild(comments.children[i].cloneNode(true));
-          }
+          commentsClone.append(...comments.cloneNode(true).children);
         }
       }
     }
@@ -229,50 +225,29 @@ if (typeof GM == "undefined") {
     root.after(div);
     root.style.display = "none";
     window.history.pushState("formatted", "");
-
     fixLinks(div);
+    convertEquations(div);
   }
 
   async function replaceThumbnailsByRealImages(preview) {
-    const realImages = document.createElement("div");
     try {
       const groups = /^\/pin\/(\d+)/.exec(window.location.pathname);
       const pinId = groups[1];
-      const pinInfo = await getPinInfo(pinId);
+      const response = await GM.asyncHttpRequest({
+        method: "GET",
+        url: "https://api.zhihu.com/pins/" + pinId
+      });
+      const pinInfo = JSON.parse(response.responseText);
       const content = (pinInfo.origin_pin || pinInfo).content;
-      for (let i = 0; i < content.length; ++i) {
-        const item = content[i];
-        if (item.type === "image") {
-          const img = await createImgFromURL(item.url);
-          realImages.appendChild(img);
-        }
-      }
-      preview.replaceWith(realImages);
+      const images = await Promise.all(
+        content.filter(item => item.type === "image").map(item => createImgFromURL(item.url))
+      );
+      const div = document.createElement("div");
+      div.append(...images);
+      preview.replaceWith(div);
     } catch (error) {
       console.error(`Error getting all images: ${error.message}`);
     }
-  }
-
-  async function getPinInfo(pinId) {
-    return new Promise((resolve, reject) => {
-      GM.xmlHttpRequest({
-        method: "GET",
-        url: "https://api.zhihu.com/pins/" + pinId,
-        onload: response => {
-          try {
-            const json = JSON.parse(response.responseText);
-            resolve(json);
-          } catch (error) {
-            reject(error);
-          }
-        },
-        onerror: response => {
-          reject({
-            message: `Error getting pin info. Status:${response.status}. StatusText: ${response.statusText}`
-          });
-        }
-      });
-    });
   }
 
   function getNextPageComments(root) {
@@ -303,66 +278,47 @@ if (typeof GM == "undefined") {
     if (el.classList.contains("RichText-video")) {
       videoDivs = [...videoDivs, el];
     }
+    const newTitle = document.createElement("div");
+    newTitle.style.margin = "0.5rem auto";
+    newTitle.innerText = "视频";
     videoDivs.forEach(async div => {
       try {
         const attr = div.attributes["data-za-extra-module"];
         const videoId = JSON.parse(attr.value).card.content.video_id;
         const href = "https://www.zhihu.com/video/" + videoId;
-        const { thumbnail } = await getVideoInfo(videoId);
+        const response = await GM.asyncHttpRequest({
+          method: "GET",
+          url: "https://lens.zhihu.com/api/videos/" + videoId,
+          headers: {
+            "Content-Type": "application/json",
+            Origin: "https://v.vzuu.com",
+            Referer: "https://v.vzuu.com/video/" + videoId
+          }
+        });
+        const videoInfo = JSON.parse(response.responseText);
+        const thumbnail = videoInfo.cover_info.thumbnail;
 
-        const video = div.querySelector(".VideoCard-video");
-        video.parentNode.style.textAlign = "center";
+        const layout = div.querySelector(".VideoCard-layout");
+        layout.style.textAlign = "center";
+        layout.prepend(newTitle.cloneNode(true));
+
+        const title = layout.querySelector(".VideoCard-title");
+        if (title) {
+          layout.children[0].innerText = "视频：" + title.innerText;
+          title.parentNode.remove();
+        }
+        const video = layout.querySelector(".VideoCard-video");
         const a = document.createElement("a");
         a.href = href;
-        Object.assign(a.style, {
-          color: "#337ab7",
-          textDecoration: "underline",
-          width: "100%"
-        });
-        if (thumbnail) {
-          const img = document.createElement("img");
-          img.src = thumbnail;
-          img.style.maxWidth = "100%";
-          a.appendChild(img);
-        } else {
-          a.innerText = "视频：" + href;
-        }
+        a.style.width = "100%";
+        const img = document.createElement("img");
+        img.src = thumbnail;
+        img.style.maxWidth = "100%";
+        a.appendChild(img);
         video.replaceWith(a);
       } catch (error) {
         console.error(`Error getting video info: ${error.message}`);
       }
-    });
-  }
-
-  function getVideoInfo(id) {
-    return new Promise((resolve, reject) => {
-      GM.xmlHttpRequest({
-        method: "GET",
-        url: `https://lens.zhihu.com/api/videos/${id}`,
-        headers: {
-          "Content-Type": "application/json",
-          Origin: "https://v.vzuu.com",
-          Referer: `https://v.vzuu.com/video/${id}`
-        },
-        onload: response => {
-          try {
-            const json = JSON.parse(response.responseText);
-            const title = json.title;
-            const thumbnail = json.cover_info.thumbnail;
-            resolve({
-              title,
-              thumbnail
-            });
-          } catch (error) {
-            reject(error);
-          }
-        },
-        onerror: response => {
-          reject({
-            message: `Status: ${response.status}. StatusText: ${response.statusText}`
-          });
-        }
-      });
     });
   }
 
@@ -429,16 +385,8 @@ if (typeof GM == "undefined") {
     img.onclick = () => {
       img.src = image.next();
     };
-
-    img.onmouseover = event => {
-      hint.style.display = "block";
-      hint.style.top = event.clientY + "px";
-      hint.style.left = event.clientX + 3 + "px";
-    };
-
-    img.onmouseleave = () => {
-      hint.style.display = "none";
-    };
+    img.onmouseover = hint.show;
+    img.onmouseleave = hint.hide;
 
     Object.assign(img.style, {
       maxWidth: "100%",
@@ -467,11 +415,9 @@ if (typeof GM == "undefined") {
   }
 
   function fixLinks(el) {
-    const re = /https?:\/\/link\.zhihu\.com\/\?target=(.*)/i;
-    const as = el.querySelectorAll("a");
-    as.forEach(a => {
-      // fix indirect links
-      const groups = re.exec(a.href);
+    el.querySelectorAll("a").forEach(a => {
+      // fix redirect links
+      const groups = REDIRECT_LINK_REG_EX.exec(a.href);
       if (groups) {
         a.href = decodeURIComponent(groups[1]);
       }
@@ -489,45 +435,23 @@ if (typeof GM == "undefined") {
     });
   }
 
-  function getEquationSVGData(url) {
-    return new Promise((resolve, reject) => {
-      GM.xmlHttpRequest({
-        method: "GET",
-        url,
-        onload: response => {
-          resolve(response.response);
-        },
-        onerror: response => {
-          reject({
-            message: `Status: ${response.status}. StatusText: ${response.statusText}`
-          });
-        }
-      });
-    });
-  }
-
-  // The web clipper on Firefox saves SVG equations as files, not images.
-  // This function converts all equations to PNG images.
-  function loadEuqations(el) {
-    const isFirefox = typeof InstallTrigger !== "undefined";
-    if (!isFirefox) return;
+  // Equations are converted to PNG images by the clipper, but the images have low resolutions
+  // This function converts equations to PNG images in higher resolutions.
+  function convertEquations(el) {
     const equationImgs = el.querySelectorAll('img[src^="https://www.zhihu.com/equation"]');
-    equationImgs.forEach(async img => {
-      try {
-        const svgData = await getEquationSVGData(img.src);
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        const svg = document.createElement("img");
-        svg.width = canvas.width = img.width;
-        svg.height = canvas.height = img.height;
-        svg.onload = () => {
-          ctx.drawImage(svg, 0, 0, svg.width, svg.height);
-          img.src = canvas.toDataURL("image/png");
-        };
-        svg.src = "data:image/svg+xml," + encodeURIComponent(svgData);
-      } catch (error) {
-        console.error(`Error converting equation: ${error.message}`);
-      }
+    equationImgs.forEach(img => {
+      const canvas = document.createElement("canvas");
+      canvas.width = EQ_IMG_SCALING_FACTOR * img.width;
+      canvas.height = EQ_IMG_SCALING_FACTOR * img.height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      Object.assign(img.style, {
+        width: img.width + "px",
+        height: img.height + "px"
+      });
+      img.src = canvas.toDataURL("image/png");
     });
   }
 
@@ -535,6 +459,7 @@ if (typeof GM == "undefined") {
     replaceVideosByLinks(el);
     loadAllFigures(el);
     fixLinks(el);
+    convertEquations(el);
   }
 
   class ZhihuImage {
@@ -557,9 +482,6 @@ if (typeof GM == "undefined") {
     constructor() {
       this.settings = {};
       this.div = null;
-      if (typeof GM_registerMenuCommand !== "undefined") {
-        GM_registerMenuCommand("设置", this.show.bind(this));
-      }
       const cornerButtons = document.querySelector(".CornerButtons");
       if (cornerButtons) {
         const div = document.createElement("div");
@@ -679,7 +601,9 @@ if (typeof GM == "undefined") {
     高清: "hd",
     缩略: "b"
   };
+  const EQ_IMG_SCALING_FACTOR = 2; // scaling factor for equation images
   const IMG_SRC_REG_EX = /^(https?:\/\/.+[a-z0-9]{32})(_\w+)?\.(\w+)$/;
+  const REDIRECT_LINK_REG_EX = /https?:\/\/link\.zhihu\.com\/\?target=(.*)/i;
   const SUFFIX = ["r", "hd", "b"];
   //const SUFFIX = ["r", "hd", "b", "xl", "t", "l", "m", "s"];
   const GIF_EXT = "gif"; // can be changed to .webp, but Evernote does not support it.
@@ -699,6 +623,14 @@ if (typeof GM == "undefined") {
     backgroundColor: "white",
     border: "1px solid black"
   });
+  hint.show = event => {
+    hint.style.display = "block";
+    hint.style.top = event.clientY + "px";
+    hint.style.left = event.clientX + 3 + "px";
+  };
+  hint.hide = () => {
+    hint.style.display = "none";
+  };
   const settings = new Settings();
 
   function main() {
