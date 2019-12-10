@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知乎重排for印象笔记
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.1.1
 // @description  重新排版知乎的问答，专栏或想法，使"印象笔记·剪藏"只保存需要的内容。
 // @author       twchen
 // @match        https://www.zhihu.com/question/*/answer/*
@@ -49,12 +49,18 @@
  * v1.1
  * 1. 把公式转为更高分辨率的图片
  * 2. 重构代码
+ * 
+ * v1.1.1
+ * 1. 解决有时重排和设置按钮不显示的问题
  */
 
 // GM 4 API polyfill
 if (typeof GM == "undefined") {
   this.GM = {};
-  [["getValue", GM_getValue], ["setValue", GM_setValue]].forEach(([newFunc, oldFunc]) => {
+  [
+    ["getValue", GM_getValue],
+    ["setValue", GM_setValue]
+  ].forEach(([newFunc, oldFunc]) => {
     GM[newFunc] = (...args) => {
       return new Promise((resolve, reject) => {
         try {
@@ -168,7 +174,8 @@ GM.asyncHttpRequest = args => {
       div.appendChild(img);
     }
     div.append(header, post, time, topics);
-    div.style.margin = "1rem";
+    div.style.padding = "1rem";
+    div.style.backgroundColor = "white";
     root.after(div);
     window.history.pushState("formatted", "");
     postprocess(div);
@@ -631,7 +638,7 @@ GM.asyncHttpRequest = args => {
   hint.hide = () => {
     hint.style.display = "none";
   };
-  const settings = new Settings();
+  let settings;
 
   function main() {
     // inject format button/link
@@ -640,6 +647,7 @@ GM.asyncHttpRequest = args => {
     else if (url.includes("answer")) addLinkToNav(formatAnswer);
     else addLinkToNav(formatPin);
 
+    settings = new Settings();
     settings.add_setting("imageQuality", "默认图片质量", ["原始", "高清", "缩略"], "原始");
     settings.add_setting(
       "keepComments",
@@ -663,5 +671,5 @@ GM.asyncHttpRequest = args => {
     document.body.append(hint);
   }
 
-  main();
+  setTimeout(main, 1500);
 })();

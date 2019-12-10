@@ -39,5 +39,5 @@
 5. 把重定向链接改为直链。
 
 
-# Bug Report或新功能请求
+# 问题反馈或新功能请求
 [GitHub](https://github.com/twchen/zhihu-formatter/issues)
