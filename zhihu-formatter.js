@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知乎重排for印象笔记
 // @namespace    http://tampermonkey.net/
-// @version      1.1.1
+// @version      1.1.4
 // @description  重新排版知乎的问答，专栏或想法，使"印象笔记·剪藏"只保存需要的内容。
 // @author       twchen
 // @match        https://www.zhihu.com/question/*/answer/*
@@ -17,42 +17,9 @@
 // @grant        GM_setValue
 // @connect      lens.zhihu.com
 // @connect      api.zhihu.com
+// @connect      www.zhihu.com
 // @supportURL   https://github.com/twchen/zhihu-formatter/issues
 // ==/UserScript==
-
-/**
- * 更新日志
- *
- * v0.11
- * 1. 图片居中
- * 2. 保留figcaption
- * 3. 增加默认图片质量配置
- *
- * v0.12
- * 1. 新增设置界面
- * 2. 支持重排想法
- *
- * v0.13
- * 1. 把重定向链接改为直链
- * 2. 解决一些链接在印象笔记客户端无法点击的问题
- *
- * v0.14
- * 1. 兼容Greasemonkey 4 API
- * 2. 在右下角新增设置按钮
- *
- * v1.0
- * 1. 用API获得想法里的图片链接
- * 2. 根据知乎图床的命名规则获得不同质量的图片的链接
- * 3. 保留视频原有样式
- * 4. 解决用Firefox保存专栏时公式无法显示的问题
- *
- * v1.1
- * 1. 把公式转为更高分辨率的图片
- * 2. 重构代码
- * 
- * v1.1.1
- * 1. 解决有时重排和设置按钮不显示的问题
- */
 
 // GM 4 API polyfill
 if (typeof GM == "undefined") {
@@ -442,23 +409,44 @@ GM.asyncHttpRequest = args => {
     });
   }
 
+  async function convertEquation(img) {
+    const canvas = document.createElement("canvas");
+    canvas.width = EQ_IMG_SCALING_FACTOR * img.width;
+    canvas.height = EQ_IMG_SCALING_FACTOR * img.height;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    Object.assign(img.style, {
+      width: img.width + "px",
+      height: img.height + "px"
+    });
+    // 直接用img会出现因为cross origin而导致的"Tainted canvases may not be exported"错误
+    // 如果window.location.href不是www.zhihu.com/*的话才会出现
+    // 但是我懒得写多一个判断了😂
+    const response = await GM.asyncHttpRequest({
+      method: "GET",
+      url: img.src
+    });
+    const svgXML = response.responseText;
+    const svgImg = document.createElement("img");
+    svgImg.onload = () => {
+      ctx.drawImage(svgImg, 0, 0, canvas.width, canvas.height);
+      img.src = canvas.toDataURL("image/png");
+    };
+    svgImg.src = "data:image/svg+xml," + encodeURIComponent(svgXML);
+  }
+
   // Equations are converted to PNG images by the clipper, but the images have low resolutions
   // This function converts equations to PNG images in higher resolutions.
   function convertEquations(el) {
     const equationImgs = el.querySelectorAll('img[src^="https://www.zhihu.com/equation"]');
     equationImgs.forEach(img => {
-      const canvas = document.createElement("canvas");
-      canvas.width = EQ_IMG_SCALING_FACTOR * img.width;
-      canvas.height = EQ_IMG_SCALING_FACTOR * img.height;
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "white";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      Object.assign(img.style, {
-        width: img.width + "px",
-        height: img.height + "px"
-      });
-      img.src = canvas.toDataURL("image/png");
+      const id = setInterval(() => {
+        if (img.complete) {
+          clearInterval(id);
+          convertEquation(img);
+        }
+      }, 100);
     });
   }
 
