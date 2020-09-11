@@ -1,21 +1,26 @@
-This is a user-script to reformat the contents on [Stack Exchange websites](https://stackexchange.com/sites) like [Stack Overflow](https://stackoverflow.com), so that you can use [Evernote Web Clipper](https://evernote.com/features/webclipper) to save only the contents you need, discarding irrelevant parts.
+Although there are many web clippers such as [Joplin Web Clipper](https://joplinapp.org/clipper/) that can automatically save important content in webpages, the clipped content may still contain irrelevant information and usually looks ugly.
+This user-script reformats a webpage on [Stack Exchange websites](https://stackexchange.com/sites) like [Stack Overflow](https://stackoverflow.com), so that you can use a web clipper to save a pretty webpage containing only the information you need.
 
-It has the following features.
+### Usage
 
-1. **Save a particular answer.**  
-   Click the "save this answer" link at the bottom left of the answer.  
-   ![](imgs/save-answer.jpg)
+This script can save three types of content, including questions, answers and comments.
 
-2. **Save a particular answer along with the problem description.**  
-   Click the "save this Q&A" link at the bottom left of the answer.  
-   ![](imgs/save-qa.jpg)
+1. To save a particular answer, click the **save this answer** link at the bottom left of the answer.  
+   To save a particular answer along with the question, click **save this Q&A**.  
+   ![](https://raw.githubusercontent.com/twchen/zhihu-formatter/master/imgs/quick-links.jpg)
+   Whether the comments would be saved is controlled by the checkbox **Save Comments by Default** described later.
 
-3. **Save multiple answers, optionally along with the problem description.**  
-   1. Click the "Save Multiple Answers" button next to the "Ask Question" button.  
-      ![](imgs/mult-1.jpg)
-   2. For each question or answer you want to save, select the checkbox above the corresponding vote buttons.  
-      ![](imgs/mult-2.jpg)
-   3. When you have selected all the contents you want to save. Click the "Done" button floating to right of the page.  
-      ![](imgs/mult-3.jpg)
+2. To have a more fine-grained control over the information you want to save, click the **Advanced Save** button next to the **Ask Question** button.  
+   ![](https://raw.githubusercontent.com/twchen/zhihu-formatter/master/imgs/advanced-save.jpg)
 
-Then you can use [Evernote Web Clipper](https://evernote.com/features/webclipper) to save the page to [Evernote](https://evernote.com).
+   For each question, answer or list of comments you want to save, select the checkbox at the top-right corner of the corresponding content.  
+   ![](https://raw.githubusercontent.com/twchen/zhihu-formatter/master/imgs/checkbox.jpg)
+
+   A dialog floating at the right of the webpage provides two checkboxes to quickly select/unselect all posts/comments, i.e., the **Select All Posts** and **Select All Comments** checkboxes.
+   Note that all posts include both the question and all answers.  
+   ![](https://raw.githubusercontent.com/twchen/zhihu-formatter/master/imgs/dialog.jpg)
+
+   When you are done with selecting the parts to be saved, click the **Save** button at the floating dialog.
+
+   The **Select Comments by Default** checkbox determines whether the comments of a post will be saved when **save this answer** or **save this Q&A** is clicked.
+   If it is checked, then the comments of a post will also be saved when the post is saved.
